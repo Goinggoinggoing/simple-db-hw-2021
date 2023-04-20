@@ -1,6 +1,5 @@
 package simpledb.common;
 
-import simpledb.common.Type;
 import simpledb.storage.DbFile;
 import simpledb.storage.HeapFile;
 import simpledb.storage.TupleDesc;
@@ -10,7 +9,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The Catalog keeps track of all available tables in the database and their
@@ -23,12 +21,42 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Catalog {
 
+    /*
+    *  DbFile tableId TupleDesc
+    * name -> table
+    *
+    * id -> tupleDesc
+    * id -> Dbfile
+    * id -> pkey
+    * id -> name
+    * name -> id
+    * */
+
+    public class Table {
+        private DbFile file;
+        private String name;
+        private String pkeyField;
+        public Table(DbFile file, String name, String pkeyField) {
+            this.file = file;
+            this.name = name;
+            this.pkeyField = pkeyField;
+        }
+
+
+    }
+
+    public HashMap<Integer, Table> tables;
+
+    private HashMap<String, Integer> nameToId;
+
     /**
      * Constructor.
      * Creates a new, empty catalog.
      */
     public Catalog() {
         // some code goes here
+        tables = new HashMap<Integer, Table>();
+        nameToId = new HashMap<String, Integer>();
     }
 
     /**
@@ -41,6 +69,9 @@ public class Catalog {
      * @param pkeyField the name of the primary key field
      */
     public void addTable(DbFile file, String name, String pkeyField) {
+        tables.put(file.getId(), new Table(file, name, pkeyField));
+        nameToId.put(name, file.getId());
+
         // some code goes here
     }
 
@@ -65,7 +96,9 @@ public class Catalog {
      */
     public int getTableId(String name) throws NoSuchElementException {
         // some code goes here
-        return 0;
+        if (!nameToId.containsKey(name))
+            throw new NoSuchElementException("no such table name");
+        return this.nameToId.get(name);
     }
 
     /**
@@ -76,7 +109,10 @@ public class Catalog {
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if (!tables.containsKey(tableid)){
+            throw new NoSuchElementException("no such tableid");
+        }
+        return this.tables.get(tableid).file.getTupleDesc() ;
     }
 
     /**
@@ -87,32 +123,47 @@ public class Catalog {
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if (!tables.containsKey(tableid)){
+            throw new NoSuchElementException("no such tableId");
+        }
+        return this.tables.get(tableid).file;
     }
 
     public String getPrimaryKey(int tableid) {
         // some code goes here
-        return null;
+        if (!tables.containsKey(tableid)){
+            throw new NoSuchElementException("no such tableId");
+        }
+        return this.tables.get(tableid).pkeyField;
     }
 
     public Iterator<Integer> tableIdIterator() {
         // some code goes here
-        return null;
+        return tables.keySet().iterator();
     }
 
     public String getTableName(int id) {
         // some code goes here
-        return null;
+        if (!tables.containsKey(id)){
+            throw new NoSuchElementException("no such tableId");
+        }
+
+        return this.tables.get(id).name;
     }
     
     /** Delete all tables from the catalog */
     public void clear() {
         // some code goes here
+        tables.clear();
+        nameToId.clear();
     }
     
     /**
      * Reads the schema from a file and creates the appropriate tables in the database.
      * @param catalogFile
+     * example:
+     *      student (sid int, name string, age int, dept string, pk(sid))
+     *      course (cid int, name string, credit int, dept string, pk(cid))
      */
     public void loadSchema(String catalogFile) {
         String line = "";

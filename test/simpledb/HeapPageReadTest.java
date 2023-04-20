@@ -22,7 +22,7 @@ public class HeapPageReadTest extends SimpleDbTestBase {
     private HeapPageId pid;
 
     public static final int[][] EXAMPLE_VALUES = new int[][] {
-        { 31933, 862 },
+        { 31933, Integer.MAX_VALUE},
         { 29402, 56883 },
         { 1468, 5825 },
         { 17876, 52278 },
@@ -60,6 +60,7 @@ public class HeapPageReadTest extends SimpleDbTestBase {
         try {
             File temp = File.createTempFile("table", ".dat");
             temp.deleteOnExit();
+//            File temp = new File("table.dat");
             HeapFileEncoder.convert(table, temp, BufferPool.getPageSize(), 2);
             EXAMPLE_DATA = TestUtil.readFileBytes(temp.getAbsolutePath());
         } catch (IOException e) {

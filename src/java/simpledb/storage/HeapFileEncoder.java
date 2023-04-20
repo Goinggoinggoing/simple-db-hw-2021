@@ -57,9 +57,9 @@ public class HeapFileEncoder {
 
       public static void convert(File inFile, File outFile, int npagebytes,
                  int numFields) throws IOException {
-      Type[] ts = new Type[numFields];
+          Type[] ts = new Type[numFields];
           Arrays.fill(ts, Type.INT_TYPE);
-      convert(inFile,outFile,npagebytes,numFields,ts);
+          convert(inFile,outFile,npagebytes,numFields,ts);
       }
 
   public static void convert(File inFile, File outFile, int npagebytes,
