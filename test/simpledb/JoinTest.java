@@ -80,6 +80,7 @@ public class JoinTest extends SimpleDbTestBase {
     op.open();
     while (op.hasNext()) {
       assertNotNull(op.next());
+//      System.out.println(op.next());
     }
     assertTrue(TestUtil.checkExhausted(op));
     op.rewind();

@@ -9,6 +9,7 @@ import simpledb.common.Type;
 import simpledb.execution.Aggregator;
 import simpledb.execution.OpIterator;
 import simpledb.execution.StringAggregator;
+import simpledb.storage.TupleIterator;
 import simpledb.systemtest.SimpleDbTestBase;
 import static org.junit.Assert.assertEquals;
 import junit.framework.JUnit4TestAdapter;
@@ -26,7 +27,7 @@ public class StringAggregatorTest extends SimpleDbTestBase {
     this.scan1 = TestUtil.createTupleList(width1,
         new Object[] { 1, "a",
                     1, "b",
-                    1, "c",
+                    1, "b",
                     3, "d",
                     3, "e",
                     3, "f",
@@ -54,7 +55,26 @@ public class StringAggregatorTest extends SimpleDbTestBase {
       OpIterator it = agg.iterator();
       it.open();
       TestUtil.matchAllTuples(TestUtil.createTupleList(width1, step), it);
+//      TupleIterator tupleList = TestUtil.createTupleList(width1, step);
+//      tupleList.open();
+//      while(tupleList.hasNext()){
+//        System.out.println(tupleList.next());
+//      }
+//      System.out.println("-------");
+//
+//      1	1
+//      -------
+//      1	2
+//      -------
+//      1	3
+//      -------
+//      1	3
+//      3	1
+//      -------
+
+
     }
+
   }
 
   /**

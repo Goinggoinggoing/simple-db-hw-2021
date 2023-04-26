@@ -13,6 +13,7 @@ import simpledb.common.Type;
 import simpledb.execution.Aggregator;
 import simpledb.execution.IntegerAggregator;
 import simpledb.execution.OpIterator;
+import simpledb.storage.TupleIterator;
 import simpledb.systemtest.SimpleDbTestBase;
 
 public class IntegerAggregatorTest extends SimpleDbTestBase {
@@ -79,6 +80,28 @@ public class IntegerAggregatorTest extends SimpleDbTestBase {
       OpIterator it = agg.iterator();
       it.open();
       TestUtil.matchAllTuples(TestUtil.createTupleList(width1, step), it);
+//      while(it.hasNext()){
+//        System.out.println(it.next());
+//        System.out.println("-----");
+//      }
+//
+//      TupleIterator tupleList = TestUtil.createTupleList(width1, step);
+//      tupleList.open();
+//      while (tupleList.hasNext()){
+//        System.out.println(tupleList.next());
+//      }
+//      System.out.println("-----");
+      /*
+           1	2
+          -----
+          1	6
+          -----
+          1	12
+          -----
+          1	12
+          3	2
+          -----
+      * */
     }
   }
 
