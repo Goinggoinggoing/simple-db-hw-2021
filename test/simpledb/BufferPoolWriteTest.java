@@ -19,6 +19,7 @@ import simpledb.storage.*;
 import simpledb.systemtest.SystemTestUtil;
 import static org.junit.Assert.*;
 import junit.framework.JUnit4TestAdapter;
+import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
 public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
@@ -38,7 +39,7 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
     	// each on a new page
     	@Override
     	public List<Page> insertTuple(TransactionId tid, Tuple t)
-    			throws DbException, IOException {
+				throws DbException, IOException, TransactionAbortedException {
     		List<Page> dirtypages = new ArrayList<>();
     		for(int i = 0; i < duplicates; i++) {
     			// create a blank page
@@ -48,13 +49,15 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
                 bw.close();
     			HeapPage p = new HeapPage(new HeapPageId(super.getId(), super.numPages() - 1),
     					HeapPage.createEmptyPageData());
-    	        p.insertTuple(t);
+				// 修改pool中的page， 或者再bufferpoll返回时更新
+//				HeapPage p = (HeapPage) Database.getBufferPool().getPage(tid, new HeapPageId(super.getId(), super.numPages() - 1), Permissions.READ_WRITE);
+				p.insertTuple(t);
     			dirtypages.add(p);
     		}
     		return dirtypages;
     	}
     }
-    
+
     /**
      * Set up initial resources for each unit test.
      */
@@ -105,8 +108,8 @@ public class BufferPoolWriteTest extends TestUtil.CreateHeapFile {
     	
     	// clear the cache
     	Database.resetBufferPool(BufferPool.DEFAULT_PAGES);
-        
-    	// delete 504 tuples from the first page
+
+		// delete 504 tuples from the first page
     	for (int i = 0; i < 504; ++i) {
     		Tuple t = tuples.get(i);
         	Database.getBufferPool().deleteTuple(tid, t);

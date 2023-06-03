@@ -19,6 +19,10 @@ import java.io.IOException;
 public class Delete extends Operator {
 
     private static final long serialVersionUID = 1L;
+    private final TransactionId tid;
+    private final TupleDesc tupleDesc;
+    private OpIterator child;
+    private Integer numTuples;
 
     /**
      * Constructor specifying the transaction that this delete belongs to as
@@ -31,23 +35,31 @@ public class Delete extends Operator {
      */
     public Delete(TransactionId t, OpIterator child) {
         // some code goes here
+        tid = t;
+        this.child = child;
+        this.tupleDesc = new TupleDesc(new Type[]{Type.INT_TYPE});
     }
 
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return tupleDesc;
     }
 
     public void open() throws DbException, TransactionAbortedException {
         // some code goes here
+        super.open();
+        child.open();
     }
 
     public void close() {
         // some code goes here
+        super.close();
+        child.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        child.rewind();
     }
 
     /**
@@ -61,7 +73,23 @@ public class Delete extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        if (numTuples != null){
+            return null;
+        }
+
+        numTuples = new Integer(0);
+        while(child.hasNext()){
+            Tuple tuple = child.next();
+            try {
+                Database.getBufferPool().deleteTuple(tid, tuple);
+                numTuples++;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        Tuple tuple = new Tuple(tupleDesc);
+        tuple.setField(0, new IntField(numTuples));
+        return tuple;
     }
 
     @Override

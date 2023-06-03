@@ -68,7 +68,6 @@ public class StringAggregator implements Aggregator {
 
         if (gbfield == NO_GROUPING){
             Tuple tuple = aggregate.get(NO_GROUP);
-            this.aggregate.put(NO_GROUP, tuple);
             if (tuple == null){
                 tuple = new Tuple(tupleDesc);
                 if(what.equals(Op.COUNT)){

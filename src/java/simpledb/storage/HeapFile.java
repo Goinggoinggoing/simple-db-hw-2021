@@ -104,6 +104,26 @@ public class HeapFile implements DbFile {
     public void writePage(Page page) throws IOException {
         // some code goes here
         // not necessary for lab1
+        PageId pid = page.getId();
+
+        int pageNumber = pid.getPageNumber();
+        int pageSize = BufferPool.getPageSize();
+        RandomAccessFile randomAccess = null;
+        try {
+            randomAccess = new RandomAccessFile(this.file, "rw");
+            byte[] buffer = page.getPageData();
+            randomAccess.seek(pageSize * pageNumber);
+            randomAccess.write(buffer);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            try {
+                randomAccess.close();
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -120,7 +140,32 @@ public class HeapFile implements DbFile {
     public List<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
-        return null;
+//        Database.getBufferPool().getPage()
+        for (int num = 0; num < this.numPages(); num++) {
+            HeapPageId heapPageId = new HeapPageId(this.getId(), num);
+            // hashmap是引用，会修改原来的pool中的page
+            HeapPage heapPage = (HeapPage)Database.getBufferPool().getPage(tid, heapPageId, Permissions.READ_WRITE);
+            if(heapPage.getNumEmptySlots() != 0){
+                heapPage.insertTuple(t);
+                return new ArrayList<Page>(Arrays.asList(heapPage));
+            }
+        }
+        // 当所有的页都满时,我们需要创建新的页并写入文件中
+        BufferedOutputStream outputStream = new BufferedOutputStream(new FileOutputStream(file, true));
+        byte[] emptyPageData = HeapPage.createEmptyPageData();
+        // 向文件末尾添加数据
+        outputStream.write(emptyPageData);
+        outputStream.close();
+
+        // 添加完成后的最后一页
+        HeapPageId heapPageId = new HeapPageId(this.getId(), this.numPages() - 1);
+        HeapPage heapPage = (HeapPage)Database.getBufferPool().getPage(tid, heapPageId, Permissions.READ_WRITE);
+
+        heapPage.insertTuple(t);
+//        writePage(heapPage);  不写回
+
+        return new ArrayList<Page>(Arrays.asList(heapPage));
+
         // not necessary for lab1
     }
 
@@ -128,7 +173,15 @@ public class HeapFile implements DbFile {
     public ArrayList<Page> deleteTuple(TransactionId tid, Tuple t) throws DbException,
             TransactionAbortedException {
         // some code goes here
-        return null;
+        int pageNum = t.getRecordId().getPageId().getPageNumber();
+        if(pageNum < 0 || pageNum > this.numPages()){
+            throw new DbException("Tuple has a invalid page num");
+        }
+
+        HeapPage page = (HeapPage)Database.getBufferPool().getPage(tid, t.getRecordId().getPageId(), Permissions.READ_WRITE);
+        page.deleteTuple(t);
+
+        return new ArrayList<Page>(Arrays.asList(page));
         // not necessary for lab1
     }
 

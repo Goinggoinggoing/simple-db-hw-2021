@@ -8,6 +8,7 @@ import static org.junit.Assert.*;
 import junit.framework.JUnit4TestAdapter;
 import simpledb.common.Database;
 import simpledb.common.Utility;
+import simpledb.execution.SeqScan;
 import simpledb.storage.*;
 import simpledb.systemtest.SystemTestUtil;
 import simpledb.transaction.TransactionId;
@@ -73,8 +74,8 @@ public class HeapFileWriteTest extends TestUtil.CreateHeapFile {
         // next HeapPage's iterator and checking if it's empty (hasNext()), making
         // sure it moves onto the next page until hitting the final page.
         smallFile.writePage(new HeapPage(new HeapPageId(tableId, 0), empty));
-        smallFile.writePage(new HeapPage(new HeapPageId(tableId, 1), empty));
-        smallFile.writePage(new HeapPage(new HeapPageId(tableId, 2), full));
+        smallFile.writePage(new HeapPage(new HeapPageId(tableId, 1), empty)); // assertEquals(0, count);
+        smallFile.writePage(new HeapPage(new HeapPageId(tableId, 2), full));  // assertEquals(numTuples, count);
         smallFile.writePage(new HeapPage(new HeapPageId(tableId, 3), empty));
         smallFile.writePage(new HeapPage(new HeapPageId(tableId, 4), full));
         DbFileIterator it = smallFile.iterator(tid);

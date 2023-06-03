@@ -30,7 +30,7 @@ public class EvictionTest extends SimpleDbTestBase {
 
     @Test public void testHeapFileScanWithManyPages() throws IOException, DbException, TransactionAbortedException {
         System.out.println("EvictionTest creating large table");
-        HeapFile f = SystemTestUtil.createRandomHeapFile(2, 1024*500, null, null);
+        HeapFile f = SystemTestUtil.createRandomHeapFile(2, 1024*504, null, null);
         System.out.println("EvictionTest scanning large table");
         Database.resetBufferPool(BUFFER_PAGES);
         long beginMem = SystemTestUtil.getMemoryFootprint();
@@ -43,9 +43,13 @@ public class EvictionTest extends SimpleDbTestBase {
         System.out.println("EvictionTest scan complete, testing memory usage of scan");
         long endMem = SystemTestUtil.getMemoryFootprint();
         long memDiff = (endMem - beginMem) / (1<<20);
+//        System.out.println(beginMem / (1<<20));
+//        System.out.println(endMem / (1<<20));
+//        System.out.println(memDiff);
         if (memDiff > MEMORY_LIMIT_IN_MB) {
             Assert.fail("Did not evict enough pages.  Scan took " + memDiff + " MB of RAM, when limit was " + MEMORY_LIMIT_IN_MB);
         }
+
     }
 
     public static void insertRow(HeapFile f, Transaction t) throws DbException,

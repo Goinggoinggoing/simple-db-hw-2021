@@ -1,0 +1,2 @@
+lab2_file1 (f1 int, f2 int, f3 int)
+lab2_file2 (f1 int, f2 int, f3 int)
