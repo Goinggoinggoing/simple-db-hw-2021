@@ -130,7 +130,8 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+            return cost1 + card1 * cost2 + card1 * card2;
+//            return -1.0;
         }
     }
 
@@ -176,6 +177,34 @@ public class JoinOptimizer {
                                                    Map<String, Integer> tableAliasToId) {
         int card = 1;
         // some code goes here
+        switch (joinOp) {
+            case EQUALS:
+                if (t1pkey && !t2pkey) {
+                    card = card2;
+                } else if (!t1pkey && t2pkey) {
+                    card = card1;
+                } else if (t1pkey && t2pkey) {
+                    card = Math.min(card1, card2);
+                } else {
+                    card = Math.max(card1, card2);
+                }
+                break;
+            case NOT_EQUALS:
+                // 记录总数-等值记录数
+                if (t1pkey && !t2pkey) {
+                    card = card1 * card2 - card2;
+                } else if (!t1pkey && t2pkey) {
+                    card = card1 * card2 - card1;
+                } else if (t1pkey && t2pkey) {
+                    card = card1 * card2 - Math.min(card1, card2);
+                } else {
+                    card = card1 * card2 - Math.max(card1, card2);
+                }
+                break;
+            default:
+                // 其他记录按范围查询计算
+                card = (int) (0.3 * card1 * card2);
+        }
         return card <= 0 ? 1 : card;
     }
 
@@ -238,7 +267,34 @@ public class JoinOptimizer {
 
         // some code goes here
         //Replace the following
-        return joins;
+        // some code goes here
+        //Replace the following
+        PlanCache planCache = new PlanCache();
+        CostCard bestCostCard = new CostCard();
+        int size = joins.size();
+        for (int i = 1; i <= size; i++) {
+            // 找出给定size的所有子集
+            Set<Set<LogicalJoinNode>> subsets = enumerateSubsets(joins, i);
+            for (Set<LogicalJoinNode> subset : subsets) {
+                double bestCostSoFar = Double.MAX_VALUE;
+                for (LogicalJoinNode joinNode : subset) {
+                    CostCard costCard =
+                            computeCostAndCardOfSubplan(stats, filterSelectivities, joinNode, subset, bestCostSoFar, planCache);
+                    if (costCard == null) {
+                        continue;
+                    }
+                    bestCostSoFar = costCard.cost;
+                    bestCostCard = costCard;
+                }
+                if (bestCostSoFar != Double.MAX_VALUE) {
+                    planCache.addPlan(subset, bestCostCard.cost, bestCostCard.card, bestCostCard.plan);
+                }
+            }
+        }
+        if (explain) {
+            printJoins(bestCostCard.plan, planCache, stats, filterSelectivities);
+        }
+        return bestCostCard.plan;
     }
 
     // ===================== Private Methods =================================

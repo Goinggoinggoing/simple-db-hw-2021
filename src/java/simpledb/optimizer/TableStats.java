@@ -1,11 +1,14 @@
 package simpledb.optimizer;
 
 import simpledb.common.Database;
+import simpledb.common.DbException;
 import simpledb.common.Type;
 import simpledb.execution.Predicate;
 import simpledb.execution.SeqScan;
 import simpledb.storage.*;
 import simpledb.transaction.Transaction;
+import simpledb.transaction.TransactionAbortedException;
+import simpledb.transaction.TransactionId;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -68,6 +71,20 @@ public class TableStats {
      */
     static final int NUM_HIST_BINS = 100;
 
+    private final int tableId;
+    private final int ioCostPerPage;
+    /**
+     * 记录表中每个属性的Histogram
+     */
+    private Map<Integer, IntHistogram> intHistogramMap;
+    private Map<Integer, StringHistogram> stringHistogramMap;
+
+    private int numPage;
+
+    private int totalTuples;
+    TupleDesc tupleDesc;
+
+
     /**
      * Create a new TableStats object, that keeps track of statistics on each
      * column of a table
@@ -87,6 +104,69 @@ public class TableStats {
         // necessarily have to (for example) do everything
         // in a single scan of the table.
         // some code goes here
+
+        this.tableId = tableid;
+        this.ioCostPerPage = ioCostPerPage;
+        this.totalTuples = 0;
+        this.intHistogramMap = new ConcurrentHashMap<>();
+        this.stringHistogramMap = new ConcurrentHashMap<>();
+
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(tableid);
+        this.numPage = ((HeapFile) dbFile).numPages();
+
+        tupleDesc = Database.getCatalog().getTupleDesc(tableid);
+        int numFields = tupleDesc.numFields();
+
+        int mins[] = new int [numFields];
+        int maxs[] = new int [numFields];
+        for (int i = 0; i < numFields; i++) {
+            mins[i] = Integer.MAX_VALUE;
+            maxs[i] = Integer.MIN_VALUE;
+        }
+
+        SeqScan seqScan = new SeqScan(new TransactionId(), tableId);
+        try {
+            seqScan.open();
+            while (seqScan.hasNext()){
+                Tuple tuple = seqScan.next();
+                totalTuples ++;
+                for (int i =0 ;i< numFields; i++){
+                    if (tuple.getField(i).getType()==Type.INT_TYPE){
+                        int value = ((IntField) tuple.getField(i)).getValue();
+                        maxs[i] = Math.max(value, maxs[i]);
+                        mins[i] = Math.min(value, mins[i]);
+                    }
+                }
+            }
+
+            for (int i =0 ;i< numFields; i++){
+                if (tupleDesc.getFieldType(i)==Type.INT_TYPE){
+                    intHistogramMap.put(i, new IntHistogram(NUM_HIST_BINS, mins[i], maxs[i]));
+                }else if (tupleDesc.getFieldType(i) == Type.STRING_TYPE){
+                    stringHistogramMap.put(i, new StringHistogram(NUM_HIST_BINS));
+                }
+            }
+
+            seqScan.rewind();
+            seqScan.open();
+            while (seqScan.hasNext()){
+                Tuple tuple = seqScan.next();
+                for (int i =0 ;i< numFields; i++){
+                    if (tuple.getField(i).getType()==Type.INT_TYPE){
+                        IntHistogram intHistogram = intHistogramMap.get(i);
+                        intHistogram.addValue(((IntField)tuple.getField(i)).getValue());
+                    }else if(tuple.getField(i).getType()==Type.STRING_TYPE){
+                        StringHistogram stringHistogram = stringHistogramMap.get(i);
+                        stringHistogram.addValue(((StringField)tuple.getField(i)).getValue());
+                    }
+                }
+            }
+            seqScan.close();
+        } catch (DbException e) {
+            e.printStackTrace();
+        } catch (TransactionAbortedException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -103,7 +183,7 @@ public class TableStats {
      */
     public double estimateScanCost() {
         // some code goes here
-        return 0;
+        return numPage * ioCostPerPage;
     }
 
     /**
@@ -117,7 +197,8 @@ public class TableStats {
      */
     public int estimateTableCardinality(double selectivityFactor) {
         // some code goes here
-        return 0;
+
+        return (int) (selectivityFactor * this.totalTuples);
     }
 
     /**
@@ -132,7 +213,11 @@ public class TableStats {
      * */
     public double avgSelectivity(int field, Predicate.Op op) {
         // some code goes here
-        return 1.0;
+        if (tupleDesc.getFieldType(field).equals(Type.INT_TYPE)) {
+            return intHistogramMap.get(field).avgSelectivity();
+        } else {
+            return stringHistogramMap.get(field).avgSelectivity();
+        }
     }
 
     /**
@@ -150,6 +235,13 @@ public class TableStats {
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
         // some code goes here
+        if (tupleDesc.getFieldType(field).equals(Type.INT_TYPE)) {
+            IntHistogram intHistogram = intHistogramMap.get(field);
+            return intHistogram.estimateSelectivity(op, ((IntField) constant).getValue());
+        }else if (tupleDesc.getFieldType(field).equals(Type.STRING_TYPE)) {
+            StringHistogram stringHistogram = stringHistogramMap.get(field);
+            return stringHistogram.estimateSelectivity(op, ((StringField) constant).getValue());
+        }
         return 1.0;
     }
 
@@ -158,7 +250,7 @@ public class TableStats {
      * */
     public int totalTuples() {
         // some code goes here
-        return 0;
+        return totalTuples;
     }
 
 }
