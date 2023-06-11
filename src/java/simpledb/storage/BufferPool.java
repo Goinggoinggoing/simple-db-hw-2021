@@ -7,6 +7,7 @@ import simpledb.common.DeadlockException;
 import simpledb.storage.evict.EvictStrategy;
 import simpledb.storage.evict.FIFOEvict;
 import simpledb.storage.evict.LRUEvict;
+import simpledb.storage.lock.LockManager;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
@@ -38,6 +39,7 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
     private Integer numPages;
     private Map<PageId, Page> pageCache;
+    private LockManager lockManager;
 
     EvictStrategy evict;
 
@@ -53,6 +55,7 @@ public class BufferPool {
         this.pageCache = new ConcurrentHashMap<PageId, Page>();
 //        this.evict = new FIFOEvict();
         this.evict = new LRUEvict();
+        this.lockManager = new LockManager();
 
     }
     
@@ -87,6 +90,32 @@ public class BufferPool {
      */
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
+
+//        long start = System.currentTimeMillis();
+//        long timeout = new Random().nextInt(2000) + 1000;
+//        while (true) {
+//            if (lockManager.acquire(pid, tid, perm)) {
+//                break;
+//            }
+//            long now = System.currentTimeMillis();
+//            if (now - start > timeout) {
+//                throw new TransactionAbortedException();
+//            }
+//            try {
+//                Thread.sleep(100);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        }
+
+        while(!lockManager.acquire(pid, tid, perm)){
+            try {
+                Thread.sleep(new Random().nextInt(100));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
         evict.modifyData(pid);
         if (!pageCache.containsKey(pid)) {
             DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
@@ -112,6 +141,7 @@ public class BufferPool {
     public  void unsafeReleasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
+        lockManager.release(tid, pid);
     }
 
     /**
@@ -122,13 +152,14 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) {
         // some code goes here
         // not necessary for lab1|lab2
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return false;
+        return lockManager.holdsLock(tid, p);
     }
 
     /**
@@ -141,6 +172,16 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid, boolean commit) {
         // some code goes here
         // not necessary for lab1|lab2
+        if (commit) {
+            try {
+                flushPages(tid);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }else {
+            recoverPages(tid);
+        }
+        lockManager.completeTransaction(tid);
     }
 
     /**
@@ -194,9 +235,9 @@ public class BufferPool {
     private void updateBufferPool(List<Page> pages, TransactionId tid) throws DbException {
         for (Page page : pages) {
             page.markDirty(true, tid);
-            if (pageCache.size() == numPages) {
-                evictPage();
-            }
+//            if (pageCache.size() == numPages) {
+//                evictPage();
+//            }
             pageCache.put(page.getId(), page);
         }
     }
@@ -233,6 +274,21 @@ public class BufferPool {
         // not necessary for lab1
         if (pageCache.containsKey(pid)) {
             pageCache.remove(pid);
+        }
+    }
+
+    private synchronized void recoverPages(TransactionId tid){
+        Iterator<Map.Entry<PageId, Page>> iterator = pageCache.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<PageId, Page> entry = iterator.next();
+            PageId pageId = entry.getKey();
+            Page page = entry.getValue();
+            if (page.isDirty() == tid){
+                discardPage(pageId);
+                DbFile dbFile = Database.getCatalog().getDatabaseFile(pageId.getTableId());
+                page = dbFile.readPage(pageId);
+                pageCache.put(pageId, page);
+            }
         }
     }
 
@@ -274,16 +330,29 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-        PageId evictPageId = evict.getEvictPageId();
-        Page page = pageCache.get(evictPageId);
-        if (page.isDirty() != null){
-            try {
-                flushPage(evictPageId);
-            } catch (IOException e) {
-                e.printStackTrace();
+//        PageId evictPageId = evict.getEvictPageId();
+//        Page page = pageCache.get(evictPageId);
+//        if (page.isDirty() != null){
+//            try {
+//                flushPage(evictPageId);
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+//        pageCache.remove(evictPageId);
+
+        // NO STEAL
+        for (int i = 0; i < pageCache.size(); i++) {
+            PageId evictPageId = evict.getEvictPageId();
+            Page page = pageCache.get(evictPageId);
+            if (page.isDirty() == null){
+                pageCache.remove(evictPageId);
+                return ;
             }
+            evict.modifyData(page.getId());
         }
-        pageCache.remove(evictPageId);
+
+        throw new DbException("no clean page to evict");
     }
 
 }
