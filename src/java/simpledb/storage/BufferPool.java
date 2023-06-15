@@ -107,7 +107,6 @@ public class BufferPool {
 //                e.printStackTrace();
 //            }
 //        }
-
         while(!lockManager.acquire(pid, tid, perm)){
             try {
                 Thread.sleep(new Random().nextInt(100));
@@ -257,6 +256,7 @@ public class BufferPool {
             Page page = entry.getValue();
             if (page.isDirty() != null){
                 flushPage(pageId);
+                iterator.remove();
             }
         }
     }
@@ -301,6 +301,13 @@ public class BufferPool {
         // not necessary for lab1
         DbFile table = Database.getCatalog().getDatabaseFile(pid.getTableId());
         Page page = this.pageCache.get(pid);
+
+        TransactionId dirtier = page.isDirty();
+        if (dirtier != null){
+            Database.getLogFile().logWrite(dirtier, page.getBeforeImage(), page);
+            Database.getLogFile().force();
+        }
+
         if (page.isDirty() != null){
             table.writePage(page);
             page.markDirty(false, null);
@@ -319,6 +326,9 @@ public class BufferPool {
             Page page = entry.getValue();
             if (page.isDirty() == tid){
                 flushPage(pageId);
+                // use current page contents as the before-image
+                // for the next transaction that modifies this page.
+                page.setBeforeImage();
             }
         }
     }
@@ -330,29 +340,33 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-//        PageId evictPageId = evict.getEvictPageId();
-//        Page page = pageCache.get(evictPageId);
-//        if (page.isDirty() != null){
-//            try {
-//                flushPage(evictPageId);
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        }
-//        pageCache.remove(evictPageId);
-
-        // NO STEAL
-        for (int i = 0; i < pageCache.size(); i++) {
-            PageId evictPageId = evict.getEvictPageId();
-            Page page = pageCache.get(evictPageId);
-            if (page.isDirty() == null){
-                pageCache.remove(evictPageId);
-                return ;
-            }
-            evict.modifyData(page.getId());
+        PageId evictPageId = evict.getEvictPageId();
+        Page page = pageCache.get(evictPageId);
+        // 有可能pool中该page已经被丢弃了，如rollback
+        while (page == null){
+            page = pageCache.get(evict.getEvictPageId());
         }
+        if (page.isDirty() != null){
+            try {
+                flushPage(evictPageId);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        pageCache.remove(evictPageId);
 
-        throw new DbException("no clean page to evict");
+        // NO STEAL  for lab4
+//        for (int i = 0; i < pageCache.size(); i++) {
+//            PageId evictPageId = evict.getEvictPageId();
+//            Page page = pageCache.get(evictPageId);
+//            if (page.isDirty() == null){
+//                pageCache.remove(evictPageId);
+//                return ;
+//            }
+//            evict.modifyData(page.getId());
+//        }
+//
+//        throw new DbException("no clean page to evict");
     }
 
 }

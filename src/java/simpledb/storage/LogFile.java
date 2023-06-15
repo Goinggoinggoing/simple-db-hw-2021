@@ -186,6 +186,7 @@ public class LogFile {
         currentOffset = raf.getFilePointer();
         force();
         tidToFirstLogRecord.remove(tid.getId());
+//        print();
     }
 
     /** Write an UPDATE record to disk for the specified tid and page
@@ -237,7 +238,6 @@ public class LogFile {
 
         raf.writeUTF(pageClassName);
         raf.writeUTF(idClassName);
-
         raf.writeInt(pageInfo.length);
         for (int j : pageInfo) {
             raf.writeInt(j);
@@ -357,6 +357,7 @@ public class LogFile {
         raf.seek(0);
         long cpLoc = raf.readLong();
 
+        // 截断起点
         long minLogRecord = cpLoc;
 
         if (cpLoc != -1L) {
@@ -458,15 +459,62 @@ public class LogFile {
         throws NoSuchElementException, IOException {
         synchronized (Database.getBufferPool()) {
             synchronized(this) {
-                preAppend();
                 // some code goes here
+                long curOffset = raf.getFilePointer();
+
+                Long tidOff = tidToFirstLogRecord.get(tid.getId());
+                raf.seek(tidOff);
+//                System.out.println("tid start at " + tidOff);
+
+
+                // 当一个page有多条log时，取第一次的oldPage
+                HashSet<PageId> pageSet = new HashSet<>();
+
+                while (true) {
+                    try {
+                        int type = raf.readInt();
+                        long cpTid = raf.readLong();
+
+                        switch (type) {
+                            case UPDATE_RECORD:
+                                Page before = readPageData(raf);
+                                Page after = readPageData(raf);
+
+                                if (cpTid == tid.getId() && !pageSet.contains(before.getId())){
+                                    DbFile table = Database.getCatalog().getDatabaseFile(before.getId().getTableId());
+                                    table.writePage(before);
+
+                                    // 删除pool中的错误的page
+                                    Database.getBufferPool().discardPage(before.getId());
+                                    pageSet.add(before.getId());
+                                }
+                                break;
+                            case CHECKPOINT_RECORD:
+                                int numXactions = raf.readInt();
+                                while (numXactions-- > 0) {
+                                    long xid = raf.readLong();
+                                    long xoffset = raf.readLong();
+                                }
+                                break;
+                        }
+
+                        raf.readLong();
+
+                    } catch (EOFException e) {
+                        break;
+                    }
+                }
+
+                // Return the file pointer to its original position
+                raf.seek(curOffset);
             }
         }
     }
 
     /** Shutdown the logging system, writing out whatever state
         is necessary so that start up can happen quickly (without
-        extensive recovery.)
+        extensive
+     y.)
     */
     public synchronized void shutdown() {
         try {
@@ -482,11 +530,120 @@ public class LogFile {
         committed transactions are installed and that the
         updates of uncommitted transactions are not installed.
     */
+    // 对所有未提交的事务，全部回滚
+    // 所有以提交的事务，再次确保同步到了磁盘中
     public void recover() throws IOException {
         synchronized (Database.getBufferPool()) {
             synchronized (this) {
                 recoveryUndecided = false;
                 // some code goes here
+                long curOffset = raf.getFilePointer();
+
+                raf.seek(0);
+//                System.out.println("0: checkpoint record at offset " + raf.readLong());
+
+                HashSet<Long> commitTidSet = new HashSet<>();
+                HashSet<Long> unCommitTidSet = new HashSet<>();
+                // 先找出提交了的事务，其他的都回滚
+                // 没commit也没rollback也拿出来，最后添加一条rollback log
+                while (true) {
+                    try {
+                        int type = raf.readInt();
+                        long cpTid = raf.readLong();
+                        totalRecords ++;
+                        unCommitTidSet.add(cpTid);
+
+                        switch (type) {
+                            case UPDATE_RECORD:
+                                Page before = readPageData(raf);
+                                Page after = readPageData(raf);
+
+                                break;
+                            case CHECKPOINT_RECORD:
+                                int numXactions = raf.readInt();
+                                while (numXactions-- > 0) {
+                                    long xid = raf.readLong();
+                                    long xoffset = raf.readLong();
+                                }
+                                break;
+
+                            case COMMIT_RECORD:
+                                commitTidSet.add(cpTid);
+                                unCommitTidSet.remove(cpTid);
+                                break;
+                            case ABORT_RECORD:
+                                unCommitTidSet.remove(cpTid);
+                                break;
+                        }
+
+                        raf.readLong();
+
+                    } catch (EOFException e) {
+                        break;
+                    }
+                }
+
+                // Return the file pointer to its original position
+                raf.seek(0);
+//                System.out.println("0: checkpoint record at offset " + raf.readLong());
+
+                HashSet<PageId> pageBeforeSet = new HashSet<>();
+
+                while (true) {
+                    try {
+                        int type = raf.readInt();
+                        long cpTid = raf.readLong();
+
+                        switch (type) {
+                            case UPDATE_RECORD:
+                                Page before = readPageData(raf);
+                                Page after = readPageData(raf);
+
+                                // commit 针对写到log但还没来得及写回磁盘的数据
+                                if (commitTidSet.contains(cpTid)){
+                                    DbFile table = Database.getCatalog().getDatabaseFile(before.getId().getTableId());
+                                    table.writePage(after);
+                                }
+                                // 回滚， 注意只回滚第一次，因为第一次对应的才是最开始的before-image
+                                else if (!commitTidSet.contains(cpTid) && !pageBeforeSet.contains(before.getId())){
+                                    DbFile table = Database.getCatalog().getDatabaseFile(before.getId().getTableId());
+                                    table.writePage(before);
+
+                                    pageBeforeSet.add(before.getId());
+                                }
+
+                                break;
+                            case CHECKPOINT_RECORD:
+                                int numXactions = raf.readInt();
+                                while (numXactions-- > 0) {
+                                    long xid = raf.readLong();
+                                    long xoffset = raf.readLong();
+                                }
+                                break;
+                        }
+
+                        raf.readLong();
+
+                    } catch (EOFException e) {
+                        break;
+                    }
+                }
+
+                currentOffset = raf.getFilePointer();
+
+                // 添加回滚log
+                Iterator<Long> iterator = unCommitTidSet.iterator();
+                while (iterator.hasNext()){
+                    Long next = iterator.next();
+                    preAppend();
+
+                    raf.writeInt(ABORT_RECORD);
+                    raf.writeLong(next);
+                    raf.writeLong(currentOffset);
+                    currentOffset = raf.getFilePointer();
+                }
+                force();
+
             }
          }
     }
